@@ -5,12 +5,15 @@ import numpy as np
 import h5py,sys
 
 SIACOL  = ['Identifier','Age','sex','Diameter','BIN_DIAG','COLL_BIN','BG_BIN','BL_DISP','BL_BLUS','DER_MEL','DM_GLOB','ASYM','SYM1','SYM2','MEL_GLOB','DISP_BLUS','DIAM_6','NO_SYM_2','size','shape','colour','inflamed','bleed','sens','diam_7','Total','suspicious']
-BIAS    = 0.02
+BIAS    = 0.04
 
 def load_sia_data(filename):
     try:
+        successMon={}
+        successMon["True"]=0
+        successMon["False"]=0
         weights=[]
-        weightfile = open("data.h5", "r")
+        weightfile = open(sys.argv[2], "r")
         weightcontent = weightfile.read()
         for i, weightrow in enumerate(weightcontent.split('\n')):
             weights.append(weightrow)
@@ -43,37 +46,61 @@ def load_sia_data(filename):
                         if(l<len(trainbools)):
                             sum+=float(weight)+float(trainbools[l])
                         elif len(weight)>0:
+                            success=True
                             print("Activation threshold:"+str(weight))
                             print("Sum:"+str(sum))
                             if bool(int(rowlist[4])) and not bool(float(sum)>float(weight)):
+                                success=False
                                 print("True real diag and False activated diag.  Add bias to weights.")
                                 biasweights=''
                                 for m,weight in enumerate(weightrow.split(',')):
                                     if (m<len(trainbools)):
-                                        biasweights+=str((float(weight)+BIAS))+","
+                                        if(bool(int(trainbools[m]))): # Only enrich for matching columns
+                                            biasweights+=str(float(weight)+BIAS)+","
+                                        else:
+                                            # passthru unweighted
+                                            biasweights+=weight+","
                                     else:
+                                        # passthru unweighted
                                         biasweights+=weight
                                 print("Original : "+weightrow)
                                 print("Modified : "+biasweights)
                                 weights[k]=biasweights
                             if not bool(int(rowlist[4])) and bool(float(sum)>float(weight)):
+                                success=False
                                 print("False real diag and True activated diag.  Subtract bias from weights.")
                                 biasweights=''
                                 for m,weight in enumerate(weightrow.split(',')):
                                     if (m<len(trainbools)):
-                                        biasweights+=str((float(weight)-BIAS))+","
+                                        if(bool(int(trainbools[m]))): # Only enrich for matching columns
+                                            biasweights+=str(float(weight)-BIAS)+","
+                                        else:
+                                            # passthru unweighted
+                                            biasweights+=weight+","
                                     else:
+                                        # passthru unweighted
                                         biasweights+=weight
                                 print("Original : "+weightrow)
                                 print("Modified : "+biasweights)
                                 weights[k]=biasweights
                             # if both are true or both or false, leave bias at 0
+                            if(success):
+                                successMon["True"]+=1
+                            else:
+                                successMon["False"]+=1
+
             print("\n\n")
 
     except Exception as e:
         print(e)
         print("Failed")
         return (None, None)
+    print("Accuracy: " + str(round(successMon["True"]/(successMon["True"]+successMon["False"]),4)) + "%")
+    with open('data.h6', 'w') as f:
+        for item in weights:
+            if(len(item)>0):
+                f.write('%s\n' % item)
+    f.close()
     return
 
 def train(filename):
